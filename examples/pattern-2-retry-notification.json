@@ -1,0 +1,107 @@
+{
+  "name": "Pattern 2 — Retry + Notification Intelligente",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger-002",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const errorMessage = $json.execution?.error?.message || '';\nconst statusMatch = errorMessage.match(/status code (\\d+)/);\nconst statusCode = statusMatch ? parseInt(statusMatch[1]) : 0;\n\nconst temporaryCodes = [429, 500, 502, 503, 504];\nconst isTemporary = temporaryCodes.includes(statusCode)\n  || errorMessage.includes('ETIMEDOUT')\n  || errorMessage.includes('ECONNRESET')\n  || errorMessage.includes('socket hang up')\n  || errorMessage.includes('rate limit')\n  || errorMessage.includes('timeout');\n\nreturn [{\n  json: {\n    workflow_name: $json.execution?.workflowData?.name || $workflow.name,\n    failed_node: $json.execution?.error?.node?.name || 'inconnu',\n    error_message: errorMessage,\n    execution_id: $json.execution?.id || '',\n    error_type: isTemporary ? 'temporary' : 'permanent',\n    status_code: statusCode,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "classifier-001",
+      "name": "Classifier Erreur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "id": "condition-001",
+              "leftValue": "={{ $json.error_type }}",
+              "rightValue": "temporary",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-type-001",
+      "name": "Temporaire ou Permanent ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "REMPLACER_PAR_ID_SPREADSHEET", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Logs", "mode": "list" },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        }
+      },
+      "id": "sheets-log-001",
+      "name": "Log Discret (Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [940, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REMPLACER",
+          "name": "Google Sheets — À configurer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REMPLACER_PAR_TON_CHAT_ID",
+        "text": "🚨 *ERREUR PERMANENTE*\n\n📌 *Workflow :* {{ $json.workflow_name }}\n❌ *Nœud :* {{ $json.failed_node }}\n🔢 *Code :* {{ $json.status_code }}\n💬 *Message :* {{ $json.error_message }}\n🕐 *Date :* {{ $json.timestamp }}\n\n⚠️ Cette erreur nécessite une intervention manuelle.",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "telegram-urgent-001",
+      "name": "Alerte Urgente Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [940, 420],
+      "credentials": {
+        "telegramApi": {
+          "id": "REMPLACER",
+          "name": "Telegram Bot — À configurer"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [[{ "node": "Classifier Erreur", "type": "main", "index": 0 }]]
+    },
+    "Classifier Erreur": {
+      "main": [[{ "node": "Temporaire ou Permanent ?", "type": "main", "index": 0 }]]
+    },
+    "Temporaire ou Permanent ?": {
+      "main": [
+        [{ "node": "Log Discret (Sheets)", "type": "main", "index": 0 }],
+        [{ "node": "Alerte Urgente Telegram", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "walbuilds-pattern-2"
+  },
+  "tags": [
+    { "name": "error-handling" },
+    { "name": "pattern-2" },
+    { "name": "walbuilds" }
+  ]
+}

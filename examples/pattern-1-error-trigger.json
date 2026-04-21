@@ -1,0 +1,99 @@
+{
+  "name": "Pattern 1 — Error Trigger Basique",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger-001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-001",
+              "name": "error_message",
+              "value": "={{ $json.execution.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "set-002",
+              "name": "failed_node",
+              "value": "={{ $json.execution.error.node.name }}",
+              "type": "string"
+            },
+            {
+              "id": "set-003",
+              "name": "execution_id",
+              "value": "={{ $json.execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "set-004",
+              "name": "workflow_name",
+              "value": "={{ $workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "set-005",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-error-001",
+      "name": "Formater Erreur",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "REMPLACER_PAR_TON_CHAT_ID",
+        "text": "🚨 *ERREUR WORKFLOW*\n\n📌 *Workflow :* {{ $json.workflow_name }}\n❌ *Nœud :* {{ $json.failed_node }}\n💬 *Message :* {{ $json.error_message }}\n🔗 *Exécution :* #{{ $json.execution_id }}\n🕐 *Date :* {{ $json.timestamp }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-001",
+      "name": "Alerte Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "REMPLACER",
+          "name": "Telegram Bot — À configurer"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [{ "node": "Formater Erreur", "type": "main", "index": 0 }]
+      ]
+    },
+    "Formater Erreur": {
+      "main": [
+        [{ "node": "Alerte Telegram", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "walbuilds-pattern-1"
+  },
+  "tags": [
+    { "name": "error-handling" },
+    { "name": "pattern-1" },
+    { "name": "walbuilds" }
+  ]
+}

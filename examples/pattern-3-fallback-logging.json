@@ -1,0 +1,165 @@
+{
+  "name": "Pattern 3 — Fallback Multi-Fournisseurs IA",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] }
+      },
+      "id": "trigger-001",
+      "name": "Trigger (exemple)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [60, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "req-001", "name": "prompt", "value": "Résume les actualités tech du jour en 5 points.", "type": "string" },
+            { "id": "req-002", "name": "max_tokens", "value": "500", "type": "number" },
+            { "id": "req-003", "name": "temperature", "value": "0.3", "type": "number" },
+            { "id": "req-004", "name": "request_id", "value": "={{ $now.toMillis() }}_{{ Math.random().toString(36).substr(2,6) }}", "type": "string" }
+          ]
+        }
+      },
+      "id": "set-req-001",
+      "name": "Préparer Requête",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [280, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": { "parameters": [{ "name": "key", "value": "REMPLACER_CLE_API" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [{ parts: [{ text: $json.prompt }] }], generationConfig: { maxOutputTokens: $json.max_tokens, temperature: $json.temperature } }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "gemini-001",
+      "name": "1. Gemini (Principal)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.error }}", "rightValue": "", "operator": { "type": "string", "operation": "exists" } }
+          ]
+        }
+      },
+      "id": "if-gemini-001",
+      "name": "Gemini OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Authorization", "value": "Bearer REMPLACER_CLE_OPENROUTER" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'openai/gpt-4o-mini', messages: [{ role: 'user', content: $('Préparer Requête').first().json.prompt }], max_tokens: $('Préparer Requête').first().json.max_tokens }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "openai-001",
+      "name": "2. OpenAI Backup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 420],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "id": "c2", "leftValue": "={{ $json.error }}", "rightValue": "", "operator": { "type": "string", "operation": "exists" } }
+          ]
+        }
+      },
+      "id": "if-openai-001",
+      "name": "OpenAI OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1180, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const gemini = $('1. Gemini (Principal)').first().json;\nconst openai = $('2. OpenAI Backup').first().json;\n\nlet result, provider;\n\nif (gemini && !gemini.error) {\n  result = gemini.candidates?.[0]?.content?.parts?.[0]?.text || 'Réponse vide';\n  provider = 'gemini';\n} else if (openai && !openai.error) {\n  result = openai.choices?.[0]?.message?.content || 'Réponse vide';\n  provider = 'openai-backup';\n} else {\n  result = null;\n  provider = 'none';\n}\n\nreturn [{\n  json: {\n    result,\n    provider_used: provider,\n    fallback_activated: provider !== 'gemini',\n    all_failed: provider === 'none',\n    request_id: $('Préparer Requête').first().json.request_id,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "merge-001",
+      "name": "Extraire Résultat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "id": "c3", "leftValue": "={{ $json.all_failed }}", "rightValue": "true", "operator": { "type": "boolean", "operation": "true" } }
+          ]
+        }
+      },
+      "id": "if-allfailed-001",
+      "name": "Tous échoué ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1620, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "REMPLACER",
+        "text": "🔥 *ALERTE CRITIQUE — TOUS FOURNISSEURS EN ÉCHEC*\n\n🆔 Request : {{ $json.request_id }}\n🕐 {{ $json.timestamp }}\n\nAucun fournisseur IA n'a pu répondre. Intervention requise immédiatement.",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "telegram-critical-001",
+      "name": "Alerte Critique",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1860, 420],
+      "credentials": { "telegramApi": { "id": "REMPLACER", "name": "Telegram — À configurer" } }
+    }
+  ],
+  "connections": {
+    "Trigger (exemple)": { "main": [[{ "node": "Préparer Requête", "type": "main", "index": 0 }]] },
+    "Préparer Requête": { "main": [[{ "node": "1. Gemini (Principal)", "type": "main", "index": 0 }]] },
+    "1. Gemini (Principal)": { "main": [[{ "node": "Gemini OK ?", "type": "main", "index": 0 }]] },
+    "Gemini OK ?": { "main": [
+      [{ "node": "2. OpenAI Backup", "type": "main", "index": 0 }],
+      [{ "node": "Extraire Résultat", "type": "main", "index": 0 }]
+    ]},
+    "2. OpenAI Backup": { "main": [[{ "node": "OpenAI OK ?", "type": "main", "index": 0 }]] },
+    "OpenAI OK ?": { "main": [
+      [{ "node": "Extraire Résultat", "type": "main", "index": 0 }],
+      [{ "node": "Extraire Résultat", "type": "main", "index": 0 }]
+    ]},
+    "Extraire Résultat": { "main": [[{ "node": "Tous échoué ?", "type": "main", "index": 0 }]] },
+    "Tous échoué ?": { "main": [
+      [{ "node": "Alerte Critique", "type": "main", "index": 0 }],
+      []
+    ]}
+  },
+  "meta": { "instanceId": "walbuilds-pattern-3" },
+  "tags": [
+    { "name": "error-handling" },
+    { "name": "pattern-3" },
+    { "name": "fallback" },
+    { "name": "walbuilds" }
+  ]
+}
